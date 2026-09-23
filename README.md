@@ -11,6 +11,7 @@ E-commerce minimalista para práctica universitaria.
 
 | Documento | Contenido |
 |-----------|-----------|
+| [Documentacion-Ecommerce-Practica.pdf](Documentacion-Ecommerce-Practica.pdf) | Documento de entrega en PDF (11 páginas) |
 | [docs/README.md](docs/README.md) | Índice general |
 | [docs/arquitectura.md](docs/arquitectura.md) | Capas hexagonales, puertos, adaptadores y flujo de una petición |
 | [docs/api.md](docs/api.md) | Referencia completa de la API REST con ejemplos |
@@ -99,6 +100,7 @@ Versión en texto:
 ecommerce-practica/
 ├── docker-compose.yml            # PostgreSQL local (opcional)
 ├── README.md
+├── Documentacion-Ecommerce-Practica.pdf   # Documento de entrega
 ├── docs/                         # Documentación técnica detallada
 ├── server/
 │   ├── .env.example
