@@ -1,187 +1,164 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { Ban, CircleCheck, PackageCheck, Receipt, Truck } from 'lucide-react';
 import { api } from '../../api.js';
-import { formatDate, formatMoney } from '../../format.js';
+import { ORDER_STATUS_LABELS, formatDate, formatMoney } from '../../format.js';
+import { Alert, Empty, Loading, PageHeader, StatusPill } from '../../components/ui.jsx';
 
-export default function OrdersView({ token, isAdmin }) {
-  const [products, setProducts] = useState([]);
+const ACTIONS = {
+  CONFIRMED: { label: 'Confirmar', icon: CircleCheck },
+  SHIPPED: { label: 'Enviar', icon: Truck },
+  DELIVERED: { label: 'Entregar', icon: PackageCheck },
+  CANCELLED: { label: 'Cancelar', icon: Ban },
+};
+
+/**
+ * manage=false: "Mis pedidos" (solo lectura).
+ * manage=true: gestión de todos los pedidos (admin o permiso ORDERS), permite cambiar el estado.
+ */
+export default function OrdersView({ token, manage = false }) {
   const [orders, setOrders] = useState([]);
-  const [cart, setCart] = useState([]); // [{ productId, quantity }]
-  const [productId, setProductId] = useState('');
-  const [quantity, setQuantity] = useState(1);
+  const [statusFilter, setStatusFilter] = useState('');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
+  const [updatingId, setUpdatingId] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [productList, orderList] = await Promise.all([api.listProducts(), api.listOrders(token)]);
-      setProducts(productList);
-      setOrders(orderList);
+      setOrders(await (manage ? api.listAllOrders(token) : api.listMyOrders(token)));
     } catch (err) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [token, manage]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  const productsById = useMemo(() => new Map(products.map((p) => [p.id, p])), [products]);
-
-  const cartTotal = cart.reduce((acc, line) => acc + (productsById.get(line.productId)?.price || 0) * line.quantity, 0);
-
-  const handleAdd = (e) => {
-    e.preventDefault();
-    setError('');
-    setMessage('');
-    const id = Number(productId);
-    const qty = Number(quantity);
-    const product = productsById.get(id);
-    if (!product) return setError('Selecciona un producto');
-    if (!Number.isInteger(qty) || qty <= 0) return setError('La cantidad debe ser un entero mayor a 0');
-
-    const alreadyInCart = cart.find((l) => l.productId === id)?.quantity || 0;
-    if (alreadyInCart + qty > product.stock) {
-      return setError(`Stock insuficiente para "${product.name}" (disponible: ${product.stock})`);
+  const handleStatus = async (order, status) => {
+    // Cancelar es irreversible (estado final), por eso es la única acción que pide confirmación
+    if (
+      status === 'CANCELLED' &&
+      !window.confirm(`¿Cancelar el pedido #${order.id}? El stock se devolverá al inventario.`)
+    ) {
+      return;
     }
-
-    setCart((prev) =>
-      alreadyInCart
-        ? prev.map((l) => (l.productId === id ? { ...l, quantity: l.quantity + qty } : l))
-        : [...prev, { productId: id, quantity: qty }],
-    );
-    setQuantity(1);
-  };
-
-  const handleRemove = (id) => setCart((prev) => prev.filter((l) => l.productId !== id));
-
-  const handleSubmitOrder = async () => {
     setError('');
     setMessage('');
-    setSubmitting(true);
+    setUpdatingId(order.id);
     try {
-      const order = await api.createOrder(token, cart);
-      setMessage(`Pedido #${order.id} creado por ${formatMoney(order.total)}`);
-      setCart([]);
-      setProductId('');
-      await load();
+      const updated = await api.changeOrderStatus(token, order.id, status);
+      setOrders((prev) => prev.map((o) => (o.id === updated.id ? updated : o)));
+      setMessage(`Pedido #${updated.id}: ${ORDER_STATUS_LABELS[updated.status]}`);
     } catch (err) {
       setError(err.message);
+      await load();
     } finally {
-      setSubmitting(false);
+      setUpdatingId(null);
     }
   };
+
+  const visible = statusFilter ? orders.filter((o) => o.status === statusFilter) : orders;
 
   return (
     <section>
-      <h2>Pedidos</h2>
+      <PageHeader
+        title={manage ? 'Pedidos' : 'Mis pedidos'}
+        description={
+          manage
+            ? 'Todos los pedidos de la tienda. Avanza cada uno por su ciclo: confirmado, enviado y entregado.'
+            : 'Historial de tus compras y el estado de cada entrega.'
+        }
+      >
+        <label>
+          Estado
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+            <option value="">Todos</option>
+            {Object.entries(ORDER_STATUS_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </PageHeader>
+
+      <Alert type="error">{error}</Alert>
+      <Alert type="success">{message}</Alert>
 
       <div className="card">
-        <h3>Nuevo pedido</h3>
-        <form className="row" onSubmit={handleAdd}>
-          <label>
-            Producto
-            <select value={productId} onChange={(e) => setProductId(e.target.value)} required>
-              <option value="">-- Selecciona --</option>
-              {products.map((p) => (
-                <option key={p.id} value={p.id} disabled={p.stock === 0}>
-                  {p.name} — {formatMoney(p.price)} (stock: {p.stock})
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Cantidad
-            <input type="number" min="1" step="1" value={quantity} onChange={(e) => setQuantity(e.target.value)} required />
-          </label>
-          <button type="submit" className="align-end">
-            Agregar
-          </button>
-        </form>
-
-        {cart.length > 0 && (
-          <>
+        {loading ? (
+          <Loading />
+        ) : visible.length === 0 ? (
+          <Empty icon={Receipt}>{orders.length === 0 ? 'Aún no hay pedidos.' : 'No hay pedidos con ese estado.'}</Empty>
+        ) : (
+          <div className="table-wrap">
             <table>
               <thead>
                 <tr>
-                  <th>Producto</th>
-                  <th className="num">Cantidad</th>
-                  <th className="num">Subtotal</th>
-                  <th />
+                  <th className="num">N.º</th>
+                  <th>Fecha</th>
+                  {manage && <th>Cliente</th>}
+                  <th>Materiales</th>
+                  <th className="num">Total</th>
+                  <th>Estado</th>
+                  {manage && <th>Acciones</th>}
                 </tr>
               </thead>
               <tbody>
-                {cart.map((line) => {
-                  const product = productsById.get(line.productId);
-                  return (
-                    <tr key={line.productId}>
-                      <td>{product?.name}</td>
-                      <td className="num">{line.quantity}</td>
-                      <td className="num">{formatMoney((product?.price || 0) * line.quantity)}</td>
-                      <td className="actions">
-                        <button className="danger" onClick={() => handleRemove(line.productId)}>
-                          Quitar
-                        </button>
+                {visible.map((o) => (
+                  <tr key={o.id}>
+                    <td className="num">{o.id}</td>
+                    <td className="nowrap">{formatDate(o.createdAt)}</td>
+                    {manage && <td>{o.userEmail}</td>}
+                    <td>
+                      <ul className="items">
+                        {o.items.map((i) => (
+                          <li key={i.id}>
+                            {i.quantity} {i.unit} × {i.productName}{' '}
+                            <span className="unit">({formatMoney(i.price)})</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </td>
+                    <td className="num">
+                      <strong>{formatMoney(o.total)}</strong>
+                    </td>
+                    <td>
+                      <StatusPill status={o.status} />
+                    </td>
+                    {manage && (
+                      <td>
+                        {o.nextStatuses.length === 0 ? (
+                          <span className="muted small">Finalizado</span>
+                        ) : (
+                          <div className="actions">
+                            {o.nextStatuses.map((s) => {
+                              const { label, icon: Icon } = ACTIONS[s];
+                              return (
+                                <button
+                                  key={s}
+                                  className={s === 'CANCELLED' ? 'danger' : 'secondary'}
+                                  disabled={updatingId === o.id}
+                                  onClick={() => handleStatus(o, s)}
+                                >
+                                  <Icon size={16} aria-hidden="true" />
+                                  {label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
                       </td>
-                    </tr>
-                  );
-                })}
+                    )}
+                  </tr>
+                ))}
               </tbody>
             </table>
-            <div className="cart-footer">
-              <strong>Total: {formatMoney(cartTotal)}</strong>
-              <button onClick={handleSubmitOrder} disabled={submitting}>
-                {submitting ? 'Enviando...' : 'Confirmar pedido'}
-              </button>
-            </div>
-          </>
-        )}
-      </div>
-
-      {error && <p className="error">{error}</p>}
-      {message && <p className="success">{message}</p>}
-
-      <div className="card">
-        <h3>{isAdmin ? 'Historial de todos los pedidos' : 'Mi historial de pedidos'}</h3>
-        {loading ? (
-          <p className="muted">Cargando...</p>
-        ) : orders.length === 0 ? (
-          <p className="muted">Aún no hay pedidos.</p>
-        ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Fecha</th>
-                {isAdmin && <th>Cliente</th>}
-                <th>Productos</th>
-                <th className="num">Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {orders.map((o) => (
-                <tr key={o.id}>
-                  <td>{o.id}</td>
-                  <td>{formatDate(o.createdAt)}</td>
-                  {isAdmin && <td>{o.userEmail}</td>}
-                  <td>
-                    <ul className="items">
-                      {o.items.map((i) => (
-                        <li key={i.id}>
-                          {i.quantity} × {i.productName} ({formatMoney(i.price)})
-                        </li>
-                      ))}
-                    </ul>
-                  </td>
-                  <td className="num">{formatMoney(o.total)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          </div>
         )}
       </div>
     </section>

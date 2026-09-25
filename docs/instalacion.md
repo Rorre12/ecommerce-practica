@@ -31,7 +31,7 @@ Crea PostgreSQL 16 en `localhost:5432` con usuario `postgres`, contraseña `post
 cd server
 copy .env.example .env
 npm install
-npx prisma migrate dev --name init
+npx prisma migrate dev          # aplica las 3 migraciones
 npm run seed
 npm run dev
 ```
@@ -60,7 +60,7 @@ npm install
 npm run dev
 ```
 
-Abre `http://localhost:5173` e inicia sesión con `admin@tienda.com` / `Admin123!`, o registra un cliente nuevo.
+Abre `http://localhost:5173` e inicia sesión con `admin@tienda.com` / `Admin123!`, o crea una cuenta nueva: entra de inmediato como comprador, y el admin le asigna permisos desde **Usuarios**.
 
 ## 5. Producción
 

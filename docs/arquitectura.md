@@ -9,7 +9,7 @@ El backend sigue la **arquitectura hexagonal** (puertos y adaptadores). El objet
 ```mermaid
 flowchart LR
     subgraph CLIENT["Cliente (React + Vite)"]
-        UI["AuthView · ProductsView · OrdersView"]
+        UI["AuthView · StoreView · ProductsView · OrdersView · UsersView"]
     end
 
     subgraph IN["Adaptador primario"]
@@ -17,7 +17,7 @@ flowchart LR
     end
 
     subgraph APP["Aplicación"]
-        UC["AuthUseCase · ProductUseCase · OrderUseCase"]
+        UC["AuthUseCase · ProductUseCase · OrderUseCase · UserUseCase"]
     end
 
     subgraph DOMAIN["Dominio"]
@@ -47,9 +47,9 @@ Código JavaScript puro, sin dependencias de librerías.
 
 | Archivo | Responsabilidad |
 |---------|-----------------|
-| `entities/User.js` | Valida email y contraseña (6–72 caracteres), normaliza el email, hashea la contraseña a través del puerto `PasswordHasher`, expone `toPublic()` sin el hash. Define `ROLES`. |
-| `entities/Product.js` | Valida nombre, precio y stock; `update()` devuelve una nueva instancia validada; `assertStock()` lanza `InsufficientStockError`. |
-| `entities/Order.js` | `Order.create()` valida cantidades, verifica stock de cada producto, congela precios y calcula el total en centavos. |
+| `entities/User.js` | Valida email y contraseña (6–72 caracteres), normaliza el email y hashea la contraseña a través del puerto `PasswordHasher`. Define `ROLES`, `USER_STATUS` y `PERMISSIONS`. Reglas: `can(permiso)` (el admin los tiene todos), `assertCanAccess()` (bloquea cuentas revocadas) y `review()` (aplica permisos o estado, nunca a un admin). `toPublic()` omite el hash. |
+| `entities/Product.js` | Valida nombre, precio, stock, unidad de venta y categoría; `update()` devuelve una nueva instancia validada; `assertStock()` lanza `InsufficientStockError`. |
+| `entities/Order.js` | `Order.create()` valida cantidades, verifica stock, congela precios y calcula el total en centavos. Define `ORDER_STATUS` y la tabla de transiciones; `assertCanChangeTo()` rechaza transiciones inválidas y `nextStatuses()` expone las permitidas. |
 | `errors.js` | Errores de dominio con un `code` (`VALIDATION_ERROR`, `NOT_FOUND`, `CONFLICT`, `UNAUTHORIZED`, `FORBIDDEN`, `INSUFFICIENT_STOCK`). No conocen códigos HTTP. |
 | `ports/*.js` | Interfaces (clases base) que la infraestructura debe implementar. |
 
@@ -59,18 +59,19 @@ Orquestan el dominio y los puertos. Reciben sus dependencias por constructor.
 
 | Caso de uso | Operaciones |
 |-------------|-------------|
-| `AuthUseCase` | `register`, `login`, `me` |
+| `AuthUseCase` | `register` (crea comprador activo y devuelve sesión), `login`, `me`, `getActiveUser` (lo usa el middleware en cada petición) |
 | `ProductUseCase` | `list`, `getById`, `create`, `update`, `delete` |
-| `OrderUseCase` | `create` (agrupa productos repetidos, valida existencia y stock), `list` (según rol), `getById` (solo dueño o admin) |
+| `OrderUseCase` | `create` (agrupa productos repetidos, valida existencia y stock), `list` (propios, o todos con permiso `ORDERS`), `getById` (dueño o `ORDERS`), `changeStatus` |
+| `UserUseCase` | `list` (filtro por estado), `review` (permisos y estado de acceso) |
 
 ### 3. Infraestructura — `server/src/infrastructure/adapters`
 
 | Adaptador | Tipo | Implementa |
 |-----------|------|------------|
-| `http/` | Primario (entrada) | Traduce HTTP ↔ casos de uso. `errorHandler` convierte `code` de dominio en status HTTP. |
-| `db/PrismaUserRepository.js` | Secundario | `UserRepository` |
+| `http/` | Primario (entrada) | Traduce HTTP ↔ casos de uso. `authenticate` verifica el JWT y recarga el usuario; `authorize(rol)` y `requirePermission(permiso)` protegen rutas; `errorHandler` convierte `code` de dominio en status HTTP. |
+| `db/PrismaUserRepository.js` | Secundario | `UserRepository` (`findAll`, `save`, `update` de estado y permisos) |
 | `db/PrismaProductRepository.js` | Secundario | `ProductRepository` (traduce errores Prisma `P2003`/`P2025` a errores de dominio) |
-| `db/PrismaOrderRepository.js` | Secundario | `OrderRepository` (transacción + descuento atómico de stock) |
+| `db/PrismaOrderRepository.js` | Secundario | `OrderRepository` (transacción + descuento atómico de stock; `updateStatus` condicionado al estado leído y devolución de stock al cancelar) |
 | `security/BcryptPasswordHasher.js` | Secundario | `PasswordHasher` |
 | `security/JwtTokenService.js` | Secundario | `TokenService` |
 
@@ -90,7 +91,7 @@ sequenceDiagram
     participant DB as PostgreSQL
 
     C->>H: POST /api/orders { items } + Bearer token
-    H->>H: verifica JWT → req.user
+    H->>H: verifica JWT y recarga el usuario (permisos vigentes) → req.user
     H->>U: create(userId, items)
     U->>R: productRepository.findByIds(ids)
     R->>DB: SELECT products
@@ -101,6 +102,22 @@ sequenceDiagram
     R-->>H: Order
     H-->>C: 201 Order
 ```
+
+## Autorización: dónde vive cada regla
+
+```mermaid
+flowchart LR
+    R["Petición con token"] --> A["authenticate<br/>verifica JWT"]
+    A --> G["AuthUseCase.getActiveUser<br/>recarga User de la BD"]
+    G -->|revocado| X["403 FORBIDDEN"]
+    G --> P{"¿Ruta protegida?"}
+    P -->|"authorize(ADMIN)"| U["/api/users"]
+    P -->|"requirePermission(PRODUCTS)"| PR["POST/PUT/DELETE /api/products"]
+    P -->|"requirePermission(ORDERS)"| OR["PATCH /api/orders/:id/status"]
+    P -->|"list(scope=all)"| OA["User.can(ORDERS) en el caso de uso"]
+```
+
+La decisión de si un usuario puede hacer algo la toma siempre la entidad `User` (`can`, `assertCanAccess`, `review`). Los middlewares y los casos de uso solo la consultan.
 
 ## Reglas de dependencia
 

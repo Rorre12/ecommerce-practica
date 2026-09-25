@@ -2,7 +2,7 @@ const parseId = require('../parseId');
 
 const pickProductFields = (body = {}) => {
   const fields = {};
-  for (const key of ['name', 'price', 'stock']) {
+  for (const key of ['name', 'price', 'stock', 'unit', 'category']) {
     if (body[key] !== undefined) fields[key] = body[key];
   }
   return fields;

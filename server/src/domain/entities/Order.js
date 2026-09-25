@@ -1,13 +1,31 @@
 const { ValidationError } = require('../errors');
 
+const ORDER_STATUS = Object.freeze({
+  PENDING: 'PENDING',
+  CONFIRMED: 'CONFIRMED',
+  SHIPPED: 'SHIPPED',
+  DELIVERED: 'DELIVERED',
+  CANCELLED: 'CANCELLED',
+});
+
+// Ciclo de vida permitido de un pedido. DELIVERED y CANCELLED son finales.
+const TRANSITIONS = Object.freeze({
+  PENDING: ['CONFIRMED', 'CANCELLED'],
+  CONFIRMED: ['SHIPPED', 'CANCELLED'],
+  SHIPPED: ['DELIVERED'],
+  DELIVERED: [],
+  CANCELLED: [],
+});
+
 class Order {
-  constructor({ id, userId, userEmail, total, createdAt, items = [] }) {
+  constructor({ id, userId, userEmail, total, status = ORDER_STATUS.PENDING, createdAt, items = [] }) {
     this.id = id;
     this.userId = userId;
     this.userEmail = userEmail;
     this.total = total;
+    this.status = status;
     this.createdAt = createdAt;
-    // items: [{ id?, productId, productName, quantity, price }]
+    // items: [{ id?, productId, productName, unit, quantity, price }]
     this.items = items;
   }
 
@@ -30,6 +48,7 @@ class Order {
       return {
         productId: product.id,
         productName: product.name,
+        unit: product.unit,
         quantity,
         price: product.price,
       };
@@ -44,6 +63,25 @@ class Order {
   belongsTo(userId) {
     return this.userId === userId;
   }
+
+  /** Estados a los que puede pasar el pedido desde su estado actual. */
+  nextStatuses() {
+    return TRANSITIONS[this.status] || [];
+  }
+
+  /** Regla de negocio: solo se permiten las transiciones del ciclo de vida. */
+  assertCanChangeTo(status) {
+    if (!Object.values(ORDER_STATUS).includes(status)) {
+      throw new ValidationError('Estado de pedido inválido');
+    }
+    if (!this.nextStatuses().includes(status)) {
+      throw new ValidationError(`No se puede cambiar un pedido de ${this.status} a ${status}`);
+    }
+  }
+
+  toJSON() {
+    return { ...this, nextStatuses: this.nextStatuses() };
+  }
 }
 
-module.exports = { Order };
+module.exports = { Order, ORDER_STATUS };

@@ -13,9 +13,22 @@ class UserRepository {
     throw new Error('UserRepository.findById no implementado');
   }
 
+  /**
+   * @param {{status?: string}} [filter]
+   * @returns {Promise<import('../entities/User').User[]>}
+   */
+  async findAll(_filter) {
+    throw new Error('UserRepository.findAll no implementado');
+  }
+
   /** @returns {Promise<import('../entities/User').User>} */
   async save(_user) {
     throw new Error('UserRepository.save no implementado');
+  }
+
+  /** Persiste estado y permisos de un usuario existente. */
+  async update(_user) {
+    throw new Error('UserRepository.update no implementado');
   }
 }
 

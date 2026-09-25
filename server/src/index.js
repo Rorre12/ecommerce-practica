@@ -10,6 +10,7 @@ const JwtTokenService = require('./infrastructure/adapters/security/JwtTokenServ
 const AuthUseCase = require('./application/AuthUseCase');
 const ProductUseCase = require('./application/ProductUseCase');
 const OrderUseCase = require('./application/OrderUseCase');
+const UserUseCase = require('./application/UserUseCase');
 const createApp = require('./infrastructure/adapters/http/app');
 
 const PORT = Number(process.env.PORT) || 4000;
@@ -27,6 +28,7 @@ const app = createApp({
   authUseCase: new AuthUseCase({ userRepository, passwordHasher, tokenService }),
   productUseCase: new ProductUseCase({ productRepository }),
   orderUseCase: new OrderUseCase({ orderRepository, productRepository }),
+  userUseCase: new UserUseCase({ userRepository }),
   tokenService,
   corsOrigin: process.env.CORS_ORIGIN || '*',
 });

@@ -37,11 +37,18 @@ export const api = {
   register: (email, password) => request('/auth/register', { method: 'POST', body: { email, password } }),
   login: (email, password) => request('/auth/login', { method: 'POST', body: { email, password } }),
 
+  me: (token) => request('/auth/me', { token }),
+
   listProducts: () => request('/products'),
   createProduct: (token, product) => request('/products', { method: 'POST', body: product, token }),
   updateProduct: (token, id, product) => request(`/products/${id}`, { method: 'PUT', body: product, token }),
   deleteProduct: (token, id) => request(`/products/${id}`, { method: 'DELETE', token }),
 
-  listOrders: (token) => request('/orders', { token }),
+  listMyOrders: (token) => request('/orders', { token }),
+  listAllOrders: (token) => request('/orders?scope=all', { token }),
   createOrder: (token, items) => request('/orders', { method: 'POST', body: { items }, token }),
+  changeOrderStatus: (token, id, status) => request(`/orders/${id}/status`, { method: 'PATCH', body: { status }, token }),
+
+  listUsers: (token) => request('/users', { token }),
+  reviewUser: (token, id, changes) => request(`/users/${id}`, { method: 'PATCH', body: changes, token }),
 };

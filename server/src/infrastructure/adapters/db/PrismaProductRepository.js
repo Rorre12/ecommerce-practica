@@ -3,7 +3,24 @@ const { Product } = require('../../../domain/entities/Product');
 const { ConflictError, NotFoundError } = require('../../../domain/errors');
 
 const toProduct = (row) =>
-  row ? new Product({ id: row.id, name: row.name, price: Number(row.price), stock: row.stock }) : null;
+  row
+    ? new Product({
+        id: row.id,
+        name: row.name,
+        price: Number(row.price),
+        stock: row.stock,
+        unit: row.unit,
+        category: row.category,
+      })
+    : null;
+
+const toData = (product) => ({
+  name: product.name,
+  price: product.price,
+  stock: product.stock,
+  unit: product.unit,
+  category: product.category,
+});
 
 class PrismaProductRepository extends ProductRepository {
   constructor(prisma) {
@@ -12,7 +29,7 @@ class PrismaProductRepository extends ProductRepository {
   }
 
   async findAll() {
-    const rows = await this.prisma.product.findMany({ orderBy: { id: 'asc' } });
+    const rows = await this.prisma.product.findMany({ orderBy: [{ category: 'asc' }, { name: 'asc' }] });
     return rows.map(toProduct);
   }
 
@@ -27,7 +44,7 @@ class PrismaProductRepository extends ProductRepository {
 
   async create(product) {
     const row = await this.prisma.product.create({
-      data: { name: product.name, price: product.price, stock: product.stock },
+      data: toData(product),
     });
     return toProduct(row);
   }
@@ -36,7 +53,7 @@ class PrismaProductRepository extends ProductRepository {
     try {
       const row = await this.prisma.product.update({
         where: { id: product.id },
-        data: { name: product.name, price: product.price, stock: product.stock },
+        data: toData(product),
       });
       return toProduct(row);
     } catch (err) {

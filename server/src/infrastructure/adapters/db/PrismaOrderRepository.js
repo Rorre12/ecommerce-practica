@@ -1,11 +1,11 @@
 const OrderRepository = require('../../../domain/ports/OrderRepository');
-const { Order } = require('../../../domain/entities/Order');
-const { InsufficientStockError } = require('../../../domain/errors');
+const { Order, ORDER_STATUS } = require('../../../domain/entities/Order');
+const { InsufficientStockError, ConflictError } = require('../../../domain/errors');
 
 const orderInclude = {
   user: { select: { email: true } },
   items: {
-    include: { product: { select: { name: true } } },
+    include: { product: { select: { name: true, unit: true } } },
     orderBy: { id: 'asc' },
   },
 };
@@ -17,11 +17,13 @@ const toOrder = (row) =>
         userId: row.userId,
         userEmail: row.user?.email,
         total: Number(row.total),
+        status: row.status,
         createdAt: row.createdAt,
         items: row.items.map((item) => ({
           id: item.id,
           productId: item.productId,
           productName: item.product?.name,
+          unit: item.product?.unit,
           quantity: item.quantity,
           price: Number(item.price),
         })),
@@ -85,6 +87,30 @@ class PrismaOrderRepository extends OrderRepository {
       orderBy: { createdAt: 'desc' },
     });
     return rows.map(toOrder);
+  }
+
+  async updateStatus(order, status) {
+    return this.prisma.$transaction(async (tx) => {
+      // Condicionado al estado leído: si otro usuario lo cambió antes, no se pisa
+      const { count } = await tx.order.updateMany({
+        where: { id: order.id, status: order.status },
+        data: { status },
+      });
+      if (count === 0) {
+        throw new ConflictError(`El pedido ${order.id} fue modificado por otro usuario. Recarga e intenta de nuevo`);
+      }
+
+      if (status === ORDER_STATUS.CANCELLED) {
+        for (const item of order.items) {
+          await tx.product.update({
+            where: { id: item.productId },
+            data: { stock: { increment: item.quantity } },
+          });
+        }
+      }
+
+      return toOrder(await tx.order.findUnique({ where: { id: order.id }, include: orderInclude }));
+    });
   }
 }
 

@@ -25,6 +25,15 @@ class OrderRepository {
   async findByUserId(_userId) {
     throw new Error('OrderRepository.findByUserId no implementado');
   }
+
+  /**
+   * Cambia el estado de forma atómica. Si el nuevo estado es CANCELLED, devuelve el stock.
+   * Debe lanzar ConflictError si el pedido cambió de estado concurrentemente.
+   * @returns {Promise<import('../entities/Order').Order>}
+   */
+  async updateStatus(_order, _status) {
+    throw new Error('OrderRepository.updateStatus no implementado');
+  }
 }
 
 module.exports = OrderRepository;

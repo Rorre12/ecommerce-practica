@@ -1,6 +1,6 @@
 const { Order } = require('../domain/entities/Order');
-const { ROLES } = require('../domain/entities/User');
-const { ValidationError, NotFoundError } = require('../domain/errors');
+const { PERMISSIONS } = require('../domain/entities/User');
+const { ValidationError, NotFoundError, ForbiddenError } = require('../domain/errors');
 
 class OrderUseCase {
   /**
@@ -50,19 +50,33 @@ class OrderUseCase {
     return this.orderRepository.create(order);
   }
 
-  /** ADMIN ve todos los pedidos; CUSTOMER solo los suyos. */
-  list(requester) {
-    return requester.role === ROLES.ADMIN
-      ? this.orderRepository.findAll()
-      : this.orderRepository.findByUserId(requester.id);
+  /**
+   * scope "mine": pedidos propios (cualquier usuario).
+   * scope "all": todos los pedidos (admin o permiso ORDERS).
+   * @param {import('../domain/entities/User').User} requester
+   */
+  list(requester, scope = 'mine') {
+    if (scope === 'all') {
+      if (!requester.can(PERMISSIONS.ORDERS)) throw new ForbiddenError();
+      return this.orderRepository.findAll();
+    }
+    return this.orderRepository.findByUserId(requester.id);
   }
 
   async getById(requester, id) {
     const order = await this.orderRepository.findById(id);
-    if (!order || (requester.role !== ROLES.ADMIN && !order.belongsTo(requester.id))) {
+    if (!order || (!requester.can(PERMISSIONS.ORDERS) && !order.belongsTo(requester.id))) {
       throw new NotFoundError(`Pedido ${id} no encontrado`);
     }
     return order;
+  }
+
+  /** Avanza o cancela un pedido. La autorización la aplica el adaptador HTTP. */
+  async changeStatus(id, status) {
+    const order = await this.orderRepository.findById(id);
+    if (!order) throw new NotFoundError(`Pedido ${id} no encontrado`);
+    order.assertCanChangeTo(status);
+    return this.orderRepository.updateStatus(order, status);
   }
 }
 
