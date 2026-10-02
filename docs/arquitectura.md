@@ -22,21 +22,25 @@ flowchart LR
 
     subgraph DOMAIN["Dominio"]
         ENT["Entidades: User · Product · Order"]
-        PORTS["Puertos: UserRepository · ProductRepository<br/>OrderRepository · PasswordHasher · TokenService"]
+        PORTS["Puertos: UserRepository · ProductRepository<br/>OrderRepository · PasswordHasher · TokenService<br/>EmailServicePort"]
     end
 
     subgraph OUT["Adaptadores secundarios"]
         DB["adapters/db (Prisma)"]
         SEC["adapters/security (bcryptjs, JWT)"]
+        MAIL["adapters/email (Nodemailer)"]
     end
 
     PG[("PostgreSQL")]
+    SMTP[("SMTP: Mailtrap / Ethereal")]
 
     UI -- "HTTP/JSON" --> HTTP --> UC --> ENT
     UC --> PORTS
     DB -. implementa .-> PORTS
     SEC -. implementa .-> PORTS
+    MAIL -. implementa .-> PORTS
     DB --> PG
+    MAIL --> SMTP
 ```
 
 ## Capas
@@ -89,6 +93,7 @@ sequenceDiagram
     participant D as Dominio (Order/Product)
     participant R as PrismaOrderRepository
     participant DB as PostgreSQL
+    participant M as NodemailerEmailAdapter
 
     C->>H: POST /api/orders { items } + Bearer token
     H->>H: verifica JWT y recarga el usuario (permisos vigentes) → req.user
@@ -99,8 +104,13 @@ sequenceDiagram
     D->>D: valida cantidades, assertStock, calcula total
     U->>R: orderRepository.create(order)
     R->>DB: BEGIN; UPDATE stock WHERE stock >= qty; INSERT order + items; COMMIT
-    R-->>H: Order
-    H-->>C: 201 Order
+    R-->>U: Order (PENDING = pendiente de pago)
+    U->>D: PaymentInstructions.forOrder(order, cuenta)
+    U->>M: emailService.sendOrderConfirmation(order, payment)
+    U->>M: emailService.sendNewOrderAlert(order, payment)
+    M-->>U: ok / error (no revierte el pedido)
+    U-->>H: Order + payment + notifications
+    H-->>C: 201
 ```
 
 ## Autorización: dónde vive cada regla

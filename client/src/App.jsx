@@ -123,7 +123,7 @@ export default function App() {
       </aside>
 
       <main className="content">
-        {current === 'store' && <StoreView token={token} onOrderCreated={() => !isAdmin && setView('my-orders')} />}
+        {current === 'store' && <StoreView token={token} onViewOrders={() => setView(isAdmin ? 'orders' : 'my-orders')} />}
         {current === 'my-orders' && <OrdersView token={token} />}
         {current === 'products' && <ProductsView token={token} />}
         {current === 'orders' && <OrdersView token={token} manage />}

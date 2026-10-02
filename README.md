@@ -45,7 +45,7 @@ flowchart LR
     end
 
     subgraph DOMAIN["Dominio (sin dependencias externas)"]
-        ENT["Entidades<br/>User (estado + permisos) · Product · Order (ciclo de vida)"]
+        ENT["Entidades<br/>User (estado + permisos) · Product · Order (ciclo de vida)<br/>PaymentInstructions"]
         ERR["Errores de dominio<br/>ValidationError · NotFoundError · ForbiddenError<br/>InsufficientStockError · ..."]
         subgraph PORTS["Puertos (interfaces)"]
             P_USER["UserRepository"]
@@ -53,15 +53,18 @@ flowchart LR
             P_ORD["OrderRepository"]
             P_HASH["PasswordHasher"]
             P_TOKEN["TokenService"]
+            P_MAIL["EmailServicePort"]
         end
     end
 
     subgraph INFRA_OUT["Infraestructura · Adaptadores secundarios (salida)"]
         DB["adapters/db<br/>PrismaUserRepository<br/>PrismaProductRepository<br/>PrismaOrderRepository"]
         SEC["adapters/security<br/>BcryptPasswordHasher<br/>JwtTokenService"]
+        MAIL["adapters/email<br/>NodemailerEmailAdapter<br/>templates/orderEmails"]
     end
 
     PG[("PostgreSQL")]
+    SMTP[("SMTP<br/>Mailtrap / Ethereal")]
 
     UI -- "HTTP / JSON" --> HTTP
     HTTP --> AUTH_UC & PROD_UC & ORD_UC & USR_UC
@@ -69,13 +72,28 @@ flowchart LR
     AUTH_UC --> P_USER & P_HASH & P_TOKEN
     USR_UC --> P_USER
     PROD_UC --> P_PROD
-    ORD_UC --> P_ORD & P_PROD
+    ORD_UC --> P_ORD & P_PROD & P_MAIL
     DB -. implementa .-> P_USER & P_PROD & P_ORD
     SEC -. implementa .-> P_HASH & P_TOKEN
+    MAIL -. implementa .-> P_MAIL
     DB --> PG
+    MAIL --> SMTP
 ```
 
 **Regla de dependencias:** las flechas apuntan siempre hacia el dominio. El dominio no importa Express, Prisma ni bcrypt; solo define puertos. `src/index.js` es la **raíz de composición**, el único lugar donde se instancian los adaptadores concretos y se inyectan en los casos de uso.
+
+---
+
+### Notificaciones por correo (Act. 2.5)
+
+No hay cobro en línea: cada pedido nuevo queda **Pendiente de pago** y el `OrderUseCase` llama al puerto de salida `EmailServicePort` para enviar:
+
+- al **cliente**, el comprobante con el desglose y las instrucciones de pago (banco, CLABE, referencia `PED-000123`, fecha límite);
+- al **administrador**, el aviso de que llegó un pedido.
+
+El adaptador `NodemailerEmailAdapter` (`server/src/infrastructure/adapters/email`) es la única pieza que importa Nodemailer. Se configura con `SMTP_*` en `server/.env` (Mailtrap, Ethereal o un SMTP real); sin `SMTP_HOST` crea una cuenta de pruebas de Ethereal y muestra en consola el enlace de cada correo. Si el correo falla el pedido no se revierte: la respuesta indica `notifications.customerEmail = false` y la pantalla de checkout muestra los datos de pago igualmente.
+
+Pruebas del caso de uso con un adaptador falso: `cd server && npm test`.
 
 ---
 

@@ -1217,3 +1217,96 @@ label.check input {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ---------- Comprobante de checkout ---------- */
+
+.checkout-hint {
+  margin: 0 0 var(--space-3);
+}
+
+.receipt h3 {
+  margin-bottom: var(--space-3);
+}
+
+.receipt-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-lg, 1.125rem);
+}
+
+.payment-box {
+  padding: var(--space-3) var(--space-4);
+  border: 1.5px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+}
+
+.payment-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+  font-weight: 600;
+}
+
+.payment-box dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px var(--space-3);
+  margin: 0;
+  font-size: var(--text-sm);
+}
+
+.payment-box dt {
+  color: var(--ink-2);
+}
+
+.payment-box dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.payment-box code {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--surface);
+  font-weight: 600;
+}
+
+.receipt-mail {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: var(--space-4) 0;
+  font-size: var(--text-sm);
+}
+
+.receipt-mail svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--success);
+}
+
+.receipt-mail.warn svg {
+  color: var(--danger);
+}
+
+.receipt-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.receipt-actions button {
+  flex: 1 1 140px;
+}
+
+td .ref {
+  display: block;
+  margin-top: 4px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}

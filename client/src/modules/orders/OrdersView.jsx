@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Ban, CircleCheck, PackageCheck, Receipt, Truck } from 'lucide-react';
 import { api } from '../../api.js';
-import { ORDER_STATUS_LABELS, formatDate, formatMoney } from '../../format.js';
+import { ORDER_STATUS_LABELS, formatDate, formatMoney, paymentReference } from '../../format.js';
 import { Alert, Empty, Loading, PageHeader, StatusPill } from '../../components/ui.jsx';
 
 const ACTIONS = {
@@ -129,6 +129,9 @@ export default function OrdersView({ token, manage = false }) {
                     </td>
                     <td>
                       <StatusPill status={o.status} />
+                      {o.status === 'PENDING' && (
+                        <span className="muted small ref">Ref. {paymentReference(o.id)}</span>
+                      )}
                     </td>
                     {manage && (
                       <td>

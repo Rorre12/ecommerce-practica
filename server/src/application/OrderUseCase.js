@@ -1,4 +1,5 @@
 const { Order } = require('../domain/entities/Order');
+const { PaymentInstructions } = require('../domain/entities/PaymentInstructions');
 const { PERMISSIONS } = require('../domain/entities/User');
 const { ValidationError, NotFoundError, ForbiddenError } = require('../domain/errors');
 
@@ -7,11 +8,17 @@ class OrderUseCase {
    * @param {{
    *   orderRepository: import('../domain/ports/OrderRepository'),
    *   productRepository: import('../domain/ports/ProductRepository'),
+   *   emailService: import('../domain/ports/EmailServicePort'),
+   *   paymentAccount: {bank: string, accountHolder: string, accountNumber: string, clabe: string, deadlineHours?: number},
+   *   logger?: Pick<Console, 'error'>,
    * }} deps
    */
-  constructor({ orderRepository, productRepository }) {
+  constructor({ orderRepository, productRepository, emailService, paymentAccount, logger = console }) {
     this.orderRepository = orderRepository;
     this.productRepository = productRepository;
+    this.emailService = emailService;
+    this.paymentAccount = paymentAccount;
+    this.logger = logger;
   }
 
   /**
@@ -46,8 +53,28 @@ class OrderUseCase {
       return { product, quantity };
     });
 
-    const order = Order.create(userId, lines);
-    return this.orderRepository.create(order);
+    const order = await this.orderRepository.create(Order.create(userId, lines));
+    const payment = PaymentInstructions.forOrder(order, this.paymentAccount);
+    const notifications = await this.notifyNewOrder(order, payment);
+
+    return { ...order.toJSON(), payment, notifications };
+  }
+
+  /**
+   * El pedido ya quedó registrado como "pendiente de pago": si un correo falla no se revierte,
+   * solo se informa para que el cliente conserve las instrucciones que muestra la pantalla.
+   */
+  async notifyNewOrder(order, payment) {
+    const [customer, admin] = await Promise.allSettled([
+      this.emailService.sendOrderConfirmation(order, payment),
+      this.emailService.sendNewOrderAlert(order, payment),
+    ]);
+    for (const [who, result] of [['cliente', customer], ['administrador', admin]]) {
+      if (result.status === 'rejected') {
+        this.logger.error(`No se pudo enviar el correo al ${who} del pedido #${order.id}:`, result.reason?.message);
+      }
+    }
+    return { customerEmail: customer.status === 'fulfilled', adminEmail: admin.status === 'fulfilled' };
   }
 
   /**

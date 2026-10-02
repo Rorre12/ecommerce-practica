@@ -3,10 +3,11 @@ import { Ban, Minus, PackageCheck, Plus, Search, ShoppingCart, Trash2 } from 'lu
 import { api } from '../../api.js';
 import { formatMoney } from '../../format.js';
 import { Alert, CategoryIcon, Empty, Loading, PageHeader } from '../../components/ui.jsx';
+import CheckoutReceipt from './CheckoutReceipt.jsx';
 
 const ALL = 'Todas';
 
-export default function StoreView({ token, onOrderCreated }) {
+export default function StoreView({ token, onViewOrders }) {
   const [products, setProducts] = useState([]);
   const [cart, setCart] = useState([]); // [{ productId, quantity }]
   const [quantities, setQuantities] = useState({}); // cantidad elegida en cada tarjeta
@@ -14,6 +15,7 @@ export default function StoreView({ token, onOrderCreated }) {
   const [search, setSearch] = useState('');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
+  const [receipt, setReceipt] = useState(null); // último pedido confirmado (con instrucciones de pago)
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
@@ -48,6 +50,7 @@ export default function StoreView({ token, onOrderCreated }) {
 
   const handleAdd = (product) => {
     setError('');
+    setReceipt(null);
     setMessage('');
     const qty = qtyOf(product.id);
     if (!Number.isInteger(qty) || qty <= 0) return setError('La cantidad debe ser un entero mayor a 0');
@@ -71,9 +74,8 @@ export default function StoreView({ token, onOrderCreated }) {
     try {
       const order = await api.createOrder(token, cart);
       setCart([]);
-      setMessage(`Pedido #${order.id} creado por ${formatMoney(order.total)}`);
+      setReceipt(order);
       await load();
-      onOrderCreated?.(order);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -183,52 +185,59 @@ export default function StoreView({ token, onOrderCreated }) {
           )}
         </div>
 
-        <aside className="card cart" aria-label="Carrito">
-          <h3>
-            <ShoppingCart size={20} aria-hidden="true" />
-            Carrito
-            {cart.length > 0 && (
-              <span className="count" aria-label={`${cart.length} productos`}>
-                {cart.length}
-              </span>
+        {receipt ? (
+          <CheckoutReceipt order={receipt} onViewOrders={onViewOrders} onContinue={() => setReceipt(null)} />
+        ) : (
+          <aside className="card cart" aria-label="Carrito">
+            <h3>
+              <ShoppingCart size={20} aria-hidden="true" />
+              Carrito
+              {cart.length > 0 && (
+                <span className="count" aria-label={`${cart.length} productos`}>
+                  {cart.length}
+                </span>
+              )}
+            </h3>
+            {cart.length === 0 ? (
+              <p className="muted small">Agrega materiales desde el catálogo para armar tu pedido.</p>
+            ) : (
+              <>
+                <ul className="cart-lines">
+                  {cart.map((line) => {
+                    const product = productsById.get(line.productId);
+                    return (
+                      <li key={line.productId}>
+                        <div>
+                          <strong>{product?.name}</strong>
+                          <span className="muted tabular">
+                            {line.quantity} {product?.unit} × {formatMoney(product?.price)}
+                          </span>
+                        </div>
+                        <div className="line-end">
+                          <span>{formatMoney((product?.price || 0) * line.quantity)}</span>
+                          <button className="remove" onClick={() => handleRemove(line.productId)}>
+                            <Trash2 size={13} aria-hidden="true" />
+                            Quitar
+                          </button>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <p className="cart-total">
+                  <span className="muted">Total</span>
+                  <strong>{formatMoney(cartTotal)}</strong>
+                </p>
+                <p className="muted small checkout-hint">
+                  Pagas por transferencia: al confirmar te enviamos por correo el comprobante y los datos bancarios.
+                </p>
+                <button className="accent" onClick={handleCheckout} disabled={submitting}>
+                  {submitting ? 'Registrando pedido…' : 'Confirmar pedido'}
+                </button>
+              </>
             )}
-          </h3>
-          {cart.length === 0 ? (
-            <p className="muted small">Agrega materiales desde el catálogo para armar tu pedido.</p>
-          ) : (
-            <>
-              <ul className="cart-lines">
-                {cart.map((line) => {
-                  const product = productsById.get(line.productId);
-                  return (
-                    <li key={line.productId}>
-                      <div>
-                        <strong>{product?.name}</strong>
-                        <span className="muted tabular">
-                          {line.quantity} {product?.unit} × {formatMoney(product?.price)}
-                        </span>
-                      </div>
-                      <div className="line-end">
-                        <span>{formatMoney((product?.price || 0) * line.quantity)}</span>
-                        <button className="remove" onClick={() => handleRemove(line.productId)}>
-                          <Trash2 size={13} aria-hidden="true" />
-                          Quitar
-                        </button>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-              <p className="cart-total">
-                <span className="muted">Total</span>
-                <strong>{formatMoney(cartTotal)}</strong>
-              </p>
-              <button className="accent" onClick={handleCheckout} disabled={submitting}>
-                {submitting ? 'Enviando…' : 'Confirmar pedido'}
-              </button>
-            </>
-          )}
-        </aside>
+          </aside>
+        )}
       </section>
     </>
   );

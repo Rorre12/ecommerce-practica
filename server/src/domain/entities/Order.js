@@ -1,7 +1,7 @@
 const { ValidationError } = require('../errors');
 
 const ORDER_STATUS = Object.freeze({
-  PENDING: 'PENDING',
+  PENDING: 'PENDING', // pendiente de pago: no hay cobro en línea, el cliente paga por transferencia
   CONFIRMED: 'CONFIRMED',
   SHIPPED: 'SHIPPED',
   DELIVERED: 'DELIVERED',
